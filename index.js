@@ -11,7 +11,7 @@ const express = require('express');
 
 // === الإعدادات ===
 // ** هام جداً: غيّر هذا الرقم إلى رقمك مع رمز الدولة بدون (+) **
-const ownerNumber = '966xxxxxxxx'; 
+const ownerNumber = '66826186068'; 
 const PORT = process.env.PORT || 3000;
 const prefix = '!'; // بادئة الأوامر
 const app = express();
