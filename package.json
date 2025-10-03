@@ -1,14 +1,14 @@
 {
-  "name": "my-whatsapp-bot",
+  "name": "my-whatsapp-anti-delete-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Bot with Anti-Delete and Pairing Code Web Interface",
+  "description": "Custom WhatsApp Bot with Anti-Delete feature and web pairing code interface.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.x.x", 
-    "pino": "^8.x.x",
-    "express": "^4.x.x"
+    "@whiskeysockets/baileys": "^6.x.x",
+    "express": "^4.x.x",
+    "pino": "^8.x.x"
   }
 }
