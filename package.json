@@ -1,0 +1,14 @@
+{
+  "name": "my-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp Bot with Anti-Delete and Pairing Code Web Interface",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.x.x", 
+    "pino": "^8.x.x",
+    "express": "^4.x.x"
+  }
+}
