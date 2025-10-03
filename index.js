@@ -1,74 +1,89 @@
 // index.js
 
-const { 
-    makeWASocket, 
-    useMultiFileAuthState, 
-    makeCacheableSignalRepository
+const {
+    makeWASocket,
+    useMultiFileAuthState,
+    getContentType,
+    WAMessageStubType
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
-const express = require('express'); // استيراد Express.js
+const express = require('express');
 
 // === الإعدادات ===
-const ownerNumber = '966xxxxxxxxx'; // ضع رقمك هنا (بدون +)
-const PORT = process.env.PORT || 3000; // لاستخدام المنفذ المحدد من Render
+// ** هام جداً: غيّر هذا الرقم إلى رقمك مع رمز الدولة بدون (+) **
+const ownerNumber = '966xxxxxxxx'; 
+const PORT = process.env.PORT || 3000;
+const prefix = '!'; // بادئة الأوامر
 const app = express();
 const logger = pino({ level: 'silent' });
+
+// متجر لتخزين الرسائل مؤقتًا (لمكافحة الحذف)
+const messagesStore = new Map();
+// متجر لتخزين الحالات مؤقتًا (لمنع حذف الحالات)
+const statusStore = new Map(); 
+
 // ==================
 
 async function startBot() {
+    // 1. إعداد المصادقة
     const { state, saveCreds } = await useMultiFileAuthState('session');
 
+    // 2. إنشاء اتصال واتساب
     const sock = makeWASocket({
         logger,
         printQRInTerminal: false,
         browser: ['My Custom Anti-Delete Bot', 'Chrome', '1.0.0'],
         auth: {
             creds: state.creds,
-            keys: makeCacheableSignalRepository(state.keys, logger),
+            // تم تصحيح الخطأ هنا بتمرير المفاتيح مباشرة
+            keys: state.keys, 
         },
-        shouldUsePairingCode: true // تفعيل رمز الاقتران
+        shouldUsePairingCode: true
     });
 
     // ----------------------------------------------------
-    // *** منطق الويب لطلب رمز الاقتران ***
+    // *** منطق الويب لطلب رمز الاقتران (يعمل مرة واحدة) ***
     // ----------------------------------------------------
-
+    
+    // يتم تنفيذ هذا فقط إذا لم يكن البوت مسجلاً بعد
     if (!sock.authState.creds.registered) {
-        let pairingCode = '';
+        let pairingCode = 'جاري التوليد...';
         try {
+            // طلب رمز الاقتران من Baileys
             pairingCode = await sock.requestPairingCode(ownerNumber);
-            console.log(`تم توليد رمز الاقتران في الخلفية: ${pairingCode}`);
+            console.log(`تم توليد رمز الاقتران: ${pairingCode}`);
         } catch (error) {
             console.error('خطأ في توليد رمز الاقتران:', error);
-            pairingCode = 'فشل توليد الرمز. تحقق من رقم المالك.';
+            pairingCode = 'فشل التوليد. تحقق من إعداداتك.';
         }
 
-        // إنشاء مسار (Route) لعرض رمز الاقتران
+        // إنشاء صفحة HTML لعرض الرمز
         app.get('/', (req, res) => {
             const htmlResponse = `
-                <!DOCTYPE html>
-                <html lang="ar">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>رمز اقتران بوت واتساب</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; background-color: #f4f4f4; }
-                        .container { background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; }
-                        .code { font-size: 2em; color: #1e88e5; border: 2px solid #1e88e5; padding: 10px 20px; border-radius: 5px; margin: 20px 0; display: inline-block; font-weight: bold; }
-                    </style>
+                <!DOCTYPE html><html lang="ar">
+                <head><meta charset="UTF-8"><title>رمز اقتران البوت</title>
+                <style>
+                    body { font-family: Tahoma, Arial, sans-serif; text-align: center; padding-top: 50px; background-color: #f4f4f4; direction: rtl; }
+                    .container { background-color: #ffffff; padding: 25px; border-radius: 12px; box-shadow: 0 6px 12px rgba(0,0,0,0.15); display: inline-block; max-width: 90%; }
+                    .code { font-size: 2.5em; color: #25D366; border: 3px solid #25D366; padding: 15px 30px; border-radius: 8px; margin: 30px 0; display: inline-block; font-weight: bold; letter-spacing: 5px; }
+                </style>
                 </head>
                 <body>
                     <div class="container">
-                        <h1>🤖 بوتك يعمل على Render!</h1>
-                        <p>لاستكمال الربط، استخدم رمز الاقتران التالي في واتساب:</p>
+                        <h1>✅ بوتك جاهز!</h1>
+                        <p>لاستكمال ربط البوت، استخدم رمز الاقتران التالي في واتساب:</p>
                         <div class="code">${pairingCode}</div>
-                        <p>اذهب إلى: *الإعدادات* > *الأجهزة المرتبطة* > *ربط جهاز* > *ربط باستخدام رقم الهاتف بدلاً من ذلك*.</p>
-                        <p>⚠️ بعد استخدام الرمز، سيتم إزالة هذه الصفحة تلقائياً وسيصبح البوت جاهزاً.</p>
+                        <p>خطوات الربط: *الإعدادات* > *الأجهزة المرتبطة* > *ربط جهاز* > *ربط باستخدام رقم الهاتف بدلاً من ذلك*.</p>
+                        <p style="color: red;">⚠️ بعد الاستخدام، قد يحتاج البوت لعدة ثواني للبدء وسيتم إزالة هذه الصفحة.</p>
                     </div>
-                </body>
-                </html>
+                </body></html>
             `;
             res.send(htmlResponse);
+        });
+    } else {
+        // إذا كان البوت مسجلاً بالفعل، اعرض صفحة تفيد بأنه قيد التشغيل
+        app.get('/', (req, res) => {
+            res.send('<h1>🤖 البوت يعمل بالفعل!</h1><p>تم الربط بنجاح والبوت قيد التشغيل.</p>');
         });
     }
 
@@ -78,7 +93,7 @@ async function startBot() {
     });
 
     // ----------------------------------------------------
-    // *** منطق البوت (الحفظ، إعادة الاتصال، الأوامر) ***
+    // *** منطق البوت (الحفظ، إعادة الاتصال) ***
     // ----------------------------------------------------
 
     // حفظ بيانات الاعتماد
@@ -92,17 +107,122 @@ async function startBot() {
             console.log('فصل الاتصال. هل يجب إعادة الاتصال؟', shouldReconnect);
             if (shouldReconnect) {
                 startBot(); // محاولة إعادة الاتصال
-            } else {
-                 console.log('تم فصل الاتصال بشكل دائم (تسجيل خروج). يرجى البدء من جديد.');
             }
         } else if (connection === 'open') {
             console.log('تم فتح الاتصال بنجاح. البوت جاهز للعمل!');
         }
     });
 
-    // === ضع منطق الأوامر ومكافحة الحذف هنا (كما شرحنا سابقاً) ===
-    // (messages.upsert) و (messages.delete)
-    // ========================================================
+    // ----------------------------------------------------
+    // *** ميزة: مكافحة الحذف (Anti-Delete) ***
+    // ----------------------------------------------------
+
+    // 1. تخزين الرسائل الواردة
+    sock.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        const jid = msg.key.remoteJid;
+        
+        if (jid === 'status@broadcast') {
+            // تخزين الحالات (Anti-Status Delete)
+            if (!msg.key.fromMe) {
+                statusStore.set(msg.key.id, msg);
+                // يمكننا جعل البوت يرسل تنبيه لك لاحقًا
+            }
+            return;
+        }
+
+        // تخزين أي رسالة عادية في المتجر قبل حذفها
+        messagesStore.set(msg.key.id, msg);
+
+        // *** منطق الأوامر المتعددة (الخطوة التالية) ***
+        await handleCommands(sock, msg);
+    });
+
+    // 2. اعتراض حدث الحذف
+    sock.ev.on('messages.delete', async (item) => {
+        if (!item.messages || item.messages.length === 0) return;
+
+        for (const message of item.messages) {
+            const deletedMsg = messagesStore.get(message.key.id);
+            if (deletedMsg && !deletedMsg.key.fromMe) { // تأكد أنه ليس البوت هو من حذف الرسالة
+
+                // استخراج محتوى الرسالة المحذوفة
+                const type = getContentType(deletedMsg.message);
+                let content = 'غير محدد (ربما وسائط)';
+
+                if (type === 'conversation' || type === 'extendedTextMessage') {
+                    content = deletedMsg.message.conversation || deletedMsg.message.extendedTextMessage.text;
+                } else if (type === 'imageMessage') {
+                    content = 'صورة';
+                } else if (type === 'videoMessage') {
+                    content = 'فيديو';
+                }
+                
+                const sender = deletedMsg.key.participant || deletedMsg.key.remoteJid;
+
+                const text = `
+                    🚨 *رسالة تم حذفها!* 🚨
+                    
+                    *من:* ${sender.split('@')[0]}
+                    *الدردشة:* ${deletedMsg.key.remoteJid}
+                    
+                    *المحتوى المحذوف:* \`\`\`${content}\`\`\`
+                `;
+
+                // إعادة إرسال تنبيه بالرسالة المحذوفة
+                await sock.sendMessage(deletedMsg.key.remoteJid, { text });
+            }
+            messagesStore.delete(message.key.id);
+        }
+    });
 }
 
-startBot();
+// دالة منفصلة لمعالجة الأوامر (للتنظيم)
+async function handleCommands(sock, msg) {
+    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+    if (!text.startsWith(prefix)) return;
+
+    const fullCommand = text.slice(prefix.length).trim();
+    const command = fullCommand.split(/\s+/)[0].toLowerCase();
+    const args = fullCommand.split(/\s+/).slice(1);
+    const jid = msg.key.remoteJid;
+
+    switch (command) {
+        case 'مرحبا':
+            await sock.sendMessage(jid, { text: 'أهلاً بك! أنا بوتك الخاص وأعمل بنجاح. كيف أخدمك؟' });
+            break;
+        
+        case 'الأوامر':
+            const commandsList = `
+                📝 *قائمة الأوامر المتاحة*
+                
+                *وظائف عامة:*
+                ${prefix}مرحبا - للترحيب.
+                ${prefix}حالات_محذوفة - لعرض آخر الحالات التي تم تخزينها (قيد التطوير).
+                
+                *وظائف متقدمة:*
+                (يمكننا إضافة صنع الملصقات، معلومات، إلخ لاحقًا)
+                
+                _ميزة مكافحة الحذف تعمل تلقائيًا!_
+            `;
+            await sock.sendMessage(jid, { text: commandsList });
+            break;
+
+        case 'حالات_محذوفة':
+            if (statusStore.size === 0) {
+                 await sock.sendMessage(jid, { text: 'لا توجد حالات جديدة تم تخزينها بعد.' });
+                 return;
+            }
+            // منطق عرض الحالات: يمكنك هنا تصفح الـ statusStore وإرسال الحالات إلى المالك
+            await sock.sendMessage(jid, { text: `تم تخزين ${statusStore.size} حالة. هذه الميزة قيد التطوير لإرسال الوسائط.` });
+            break;
+            
+        default:
+            await sock.sendMessage(jid, { text: `عفواً، لا أفهم الأمر: ${prefix}${command}.` });
+            break;
+    }
+}
+
+startBot().catch(err => {
+    console.error('خطأ فادح في تشغيل البوت:', err);
+});
